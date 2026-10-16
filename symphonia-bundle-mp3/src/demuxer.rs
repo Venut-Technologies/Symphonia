@@ -466,7 +466,9 @@ impl<'s> MpaReader<'s> {
                 info!("estimating duration from bitrate, may be inaccurate for vbr files");
 
                 if let Some(n_mpeg_frames) = estimate_num_mpeg_frames(&mut mss) {
-                    track.with_num_frames(n_mpeg_frames * u64::from(header.num_frames()));
+                    // A bitrate estimate is useful for UI duration but must never trim PCM.
+                    // Decode all complete frames to EOF when no authoritative frame count exists.
+                    track.with_duration(Duration::from(n_mpeg_frames * u64::from(header.num_frames())));
                 }
             }
         }
@@ -896,7 +898,9 @@ fn try_read_info_tag_inner(buf: &[u8], header: &FrameHeader) -> Result<Option<Xi
 
         // If there was no CRC written, then assume the tag is correct. Otherwise, use the CRC.
         // Accept a written CRC of 0 which defacto means to ignore the CRC.
-        let is_tag_ok = crc.is_none_or(|crc| crc == 0 || crc == reader.monitor().crc());
+        // ffmpeg policy: keep known encoder delay/padding even when tag CRC is damaged.
+        let known_encoder = encoder[..4] == *b"LAME" || encoder[..4] == *b"Lavf" || encoder[..4] == *b"Lavc";
+        let is_tag_ok = known_encoder || crc.is_none_or(|crc| crc == 0 || crc == reader.monitor().crc());
 
         if is_tag_ok {
             // The CRC matched or is not present.
