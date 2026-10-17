@@ -466,7 +466,11 @@ impl<'s> MpaReader<'s> {
                 info!("estimating duration from bitrate, may be inaccurate for vbr files");
 
                 if let Some(n_mpeg_frames) = estimate_num_mpeg_frames(&mut mss) {
-                    track.with_num_frames(n_mpeg_frames * u64::from(header.num_frames()));
+                    // The estimate is only a duration hint: it must not limit the number of
+                    // decoded frames, or the tail of a VBR stream is cut off.
+                    track.with_duration(Duration::from(
+                        n_mpeg_frames * u64::from(header.num_frames()),
+                    ));
                 }
             }
         }
